@@ -232,6 +232,7 @@ class DownloadManager(QObject):
         self.server_last_modified = None
         self.speed_history = collections.deque(maxlen=10)
         self.chunk_progress: Dict[int, int] = {}
+        self.current_speed = 0.0
         self._metadata_signals = None
         self._metadata_fetcher = None
         self.speed_limiter = SpeedLimiter(speed_limit_bps)
@@ -476,6 +477,7 @@ class DownloadManager(QObject):
             if self.speed_history:
                 speed = sum(self.speed_history) / len(self.speed_history)
 
+        self.current_speed = speed
         self.progress_updated.emit(
             self.download_id, self.downloaded_size, self.total_size, speed, self.status.name.capitalize()
         )

@@ -27,6 +27,60 @@ def torrent_panel(qtbot, tmp_path):
         panel.engine.remove(torrent_id, delete_files=False)
 
 
+def test_seed_ratio_limit_auto_pauses_when_reached(qtbot, torrent_panel, local_seed, tmp_path):
+    """Regression test: seed_ratio_limit was accepted in the Add Torrent
+    dialog and stored on the record, but nothing ever enforced it -- a
+    torrent would seed forever regardless of the configured limit."""
+    content = os.urandom(10_000)
+    torrent_bytes = local_seed.seed_file("ratio_test.bin", content)
+    torrent_path = str(tmp_path / "ratio_test.bin.torrent")
+    local_seed.write_torrent_file(torrent_bytes, torrent_path)
+
+    save_path = str(tmp_path / "leech_ratio")
+    torrent_id = torrent_panel.add_torrent(
+        mode="file", torrent_file_path=torrent_path, save_path=save_path, seed_ratio_limit=2.0,
+    )
+    torrent_panel.engine.connect_peer(torrent_id, "127.0.0.1", local_seed.port)
+
+    finished = {}
+    torrent_panel.torrent_completed.connect(lambda tid, name: finished.update(done=True) if tid == torrent_id else None)
+    pump(qtbot, lambda: bool(finished))
+
+    handle = torrent_panel.engine.handles[torrent_id]
+    assert not handle.status().paused  # not yet over the ratio limit
+
+    # Simulate having uploaded enough to cross the configured ratio -- doing
+    # this for real would require a second peer actually pulling data back
+    # from our completed download, which real network conditions can't
+    # reliably guarantee inside a fast, deterministic test.
+    fake_status = {"is_seeding": True, "ratio": 3.0}
+    torrent_panel._enforce_seed_ratio_limit(torrent_id, fake_status)
+    qtbot.waitUntil(lambda: handle.status().paused, timeout=5000)
+
+
+def test_seed_ratio_limit_of_zero_means_unlimited(qtbot, torrent_panel, local_seed, tmp_path):
+    content = os.urandom(10_000)
+    torrent_bytes = local_seed.seed_file("unlimited.bin", content)
+    torrent_path = str(tmp_path / "unlimited.bin.torrent")
+    local_seed.write_torrent_file(torrent_bytes, torrent_path)
+
+    save_path = str(tmp_path / "leech_unlimited")
+    torrent_id = torrent_panel.add_torrent(
+        mode="file", torrent_file_path=torrent_path, save_path=save_path, seed_ratio_limit=0.0,
+    )
+    torrent_panel.engine.connect_peer(torrent_id, "127.0.0.1", local_seed.port)
+
+    finished = {}
+    torrent_panel.torrent_completed.connect(lambda tid, name: finished.update(done=True) if tid == torrent_id else None)
+    pump(qtbot, lambda: bool(finished))
+
+    handle = torrent_panel.engine.handles[torrent_id]
+    torrent_panel._enforce_seed_ratio_limit(torrent_id, {"is_seeding": True, "ratio": 1000.0})
+    time.sleep(0.3)
+    qtbot.wait(50)
+    assert not handle.status().paused
+
+
 def test_panel_starts_empty(torrent_panel):
     assert torrent_panel.torrent_list.count() == 0
     assert torrent_panel.category_filter.itemText(0) == "All Categories"
@@ -117,6 +171,12 @@ def test_session_persistence_round_trip(qtbot, tmp_path, local_seed):
     assert panel2.records[restored_id].category == "Video"
     for tid in list(panel2.engine.handles.keys()):
         panel2.engine.remove(tid, delete_files=False)
+
+
+def test_add_torrent_dialog_prefills_default_seed_ratio(qtbot):
+    dialog = AddTorrentDialog(default_seed_ratio_limit=1.5)
+    qtbot.addWidget(dialog)
+    assert dialog.seed_ratio_input.text() == "1.5"
 
 
 def test_add_torrent_dialog_rejects_invalid_magnet(qtbot):

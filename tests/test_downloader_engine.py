@@ -206,6 +206,7 @@ def test_stop_during_metadata_fetch_prevents_worker_spawn(qapp, thread_pool, moc
     assert manager.active_workers == 0
 
 
+@pytest.mark.timeout(45)
 def test_metadata_signals_survive_fast_failure_without_gc_crash(qapp, thread_pool, download_dir):
     """Regression test: the MetadataFetcherSignals object created inside
     start() must not be collectible while its background thread is still
@@ -221,7 +222,12 @@ def test_metadata_signals_survive_fast_failure_without_gc_crash(qapp, thread_poo
     )
     manager.start()
     gc.collect()  # aggressively try to collect anything not properly referenced
-    assert pump_events(qapp, lambda: manager.status == Status.ERROR, timeout=15)
+    # Note: this timeout is generous (rather than the ~1s this takes on Linux)
+    # because Windows' connection-refused detection plus urllib3's retry
+    # backoff for a closed port can take noticeably longer in practice --
+    # that's just platform variance in how fast the failure surfaces, not a
+    # sign that the fix (no GC crash) has regressed.
+    assert pump_events(qapp, lambda: manager.status == Status.ERROR, timeout=30)
     assert "deleted" not in manager.traceback_info.lower()
 
 

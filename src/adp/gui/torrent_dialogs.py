@@ -93,7 +93,7 @@ class AddTorrentDialog(QDialog):
     """Add a torrent via magnet link or a .torrent file, with an embedded
     file-selection tree that populates once a .torrent file is parsed."""
 
-    def __init__(self, parent=None, default_save_path=None):
+    def __init__(self, parent=None, default_save_path=None, default_seed_ratio_limit=0.0):
         super().__init__(parent)
         self.setWindowTitle("Add Torrent")
         self.setMinimumSize(520, 480)
@@ -151,6 +151,8 @@ class AddTorrentDialog(QDialog):
 
         self.seed_ratio_input = QLineEdit()
         self.seed_ratio_input.setPlaceholderText("e.g. 2.0 (blank = seed indefinitely)")
+        if default_seed_ratio_limit:
+            self.seed_ratio_input.setText(str(default_seed_ratio_limit))
         form.addRow("Seed Ratio Limit:", self.seed_ratio_input)
 
         layout.addLayout(form)

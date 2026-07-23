@@ -22,8 +22,22 @@ dark/light themes -- backed by a fully headless-testable core engine.
 - Per-file selection (choose which files in a multi-file torrent to grab)
 - DHT (trackerless peer discovery), seeding after completion, force recheck
 - Per-torrent download/upload speed limits and an optional seed ratio limit
+  (once reached, the torrent auto-stops seeding)
 - Session persistence across restarts using libtorrent's own resume-data,
   so a restart resumes quickly instead of doing a full recheck
+
+Torrents keep seeding after they finish downloading by default (normal
+torrent etiquette) -- right-click a finished torrent and choose **Stop
+Seeding** to stop it manually, or set a seed ratio limit when adding it (or
+a default one in Settings) to have it stop automatically once reached.
+
+**Stats dashboard** (third tab)
+- A rolling speed graph (download/upload, last 5 minutes) drawn with a
+  lightweight custom widget -- no extra charting library dependency
+- Session totals (this run) and lifetime totals (persisted across restarts):
+  bytes transferred, downloads/torrents completed
+- Swarm health when torrent support is available: active torrents,
+  connected peers/seeds, DHT node count
 
 **Pro GUI**
 - Category auto-detection (Documents/Archives/Video/Audio/Images/Software)
@@ -154,6 +168,10 @@ The suite is organized as:
 - `test_torrent_panel.py` -- pytest-qt tests driving the real `TorrentPanel`
   widget (add/category-filter/remove/session round-trip), plus the add-torrent
   dialog's validation.
+- `test_stats_aggregator.py`, `test_stats_store.py` -- fast, fully offline
+  unit tests for the dashboard's byte-counting logic and persistence.
+- `test_stats_panel.py` -- pytest-qt tests driving the real `StatsPanel`
+  widget against real downloads.
 - `test_speed_limiter.py`, `test_scheduler.py`, `test_session.py`,
   `test_format_utils.py`, `test_url_utils.py` -- fast, fully offline unit
   tests for the supporting modules.

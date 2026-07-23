@@ -32,6 +32,8 @@ except ImportError as e:
     TorrentPanel = None
     TORRENT_SUPPORT_AVAILABLE = False
     _TORRENT_IMPORT_ERROR = e
+
+from adp.gui.stats_panel import StatsPanel
 from adp.gui.theme import stylesheet_for
 from adp.gui.tray import DownloaderTrayIcon
 
@@ -502,6 +504,7 @@ class MainWindow(QMainWindow):
                 self, state_dir=state_dir,
                 listen_port=settings.get("torrent_listen_port", 6881),
                 enable_dht=settings.get("torrent_enable_dht", True),
+                default_seed_ratio_limit=settings.get("torrent_default_seed_ratio_limit", 0.0),
             )
             self.tabs.addTab(self.torrent_panel, "Torrents")
             self.torrent_panel.status_update_requested.connect(self.statusBar().showMessage)
@@ -516,6 +519,11 @@ class MainWindow(QMainWindow):
             placeholder.setWordWrap(True)
             self.tabs.addTab(placeholder, "Torrents (unavailable)")
             logger.warning(f"Torrent support disabled: {_TORRENT_IMPORT_ERROR}")
+
+        self.stats_panel = StatsPanel(
+            self, download_panel=self.download_panel, torrent_panel=self.torrent_panel, state_dir=state_dir,
+        )
+        self.tabs.addTab(self.stats_panel, "Stats")
 
         self.setCentralWidget(self.tabs)
 
@@ -590,6 +598,7 @@ class MainWindow(QMainWindow):
         self.download_panel.closeEvent(event)
         if self.torrent_panel is not None:
             self.torrent_panel.closeEvent(event)
+        self.stats_panel.closeEvent(event)
         super().closeEvent(event)
 
 

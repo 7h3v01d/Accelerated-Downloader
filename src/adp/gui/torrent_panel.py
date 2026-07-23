@@ -26,10 +26,12 @@ class TorrentPanel(QWidget):
     status_update_requested = pyqtSignal(str, int)
     torrent_completed = pyqtSignal(str, str)  # torrent_id, name -- for tray notifications
 
-    def __init__(self, parent=None, state_dir=None, listen_port=6881, enable_dht=True):
+    def __init__(self, parent=None, state_dir=None, listen_port=6881, enable_dht=True,
+                 default_seed_ratio_limit=0.0):
         super().__init__(parent)
         state_dir = state_dir or os.getcwd()
         self.state_dir = state_dir
+        self.default_seed_ratio_limit = default_seed_ratio_limit
         self.session_store = TorrentSessionStore(state_dir)
         self.default_save_path = os.path.join(state_dir, "torrent_downloads")
         os.makedirs(self.default_save_path, exist_ok=True)
@@ -105,7 +107,11 @@ class TorrentPanel(QWidget):
         status = handle.status()
         if status.paused:
             menu.addAction(self.resume_action)
+        elif status.is_finished or status.is_seeding:
+            self.pause_action.setText("Stop Seeding")
+            menu.addAction(self.pause_action)
         else:
+            self.pause_action.setText("Pause")
             menu.addAction(self.pause_action)
         menu.addAction(self.select_files_action)
         menu.addAction(self.force_recheck_action)
@@ -117,7 +123,10 @@ class TorrentPanel(QWidget):
 
     # -- add ---------------------------------------------------------------
     def add_torrent_from_dialog(self):
-        dialog = AddTorrentDialog(self, default_save_path=self.default_save_path)
+        dialog = AddTorrentDialog(
+            self, default_save_path=self.default_save_path,
+            default_seed_ratio_limit=self.default_seed_ratio_limit,
+        )
         if dialog.exec():
             data = dialog.get_data()
             self.add_torrent(**data)
@@ -181,6 +190,24 @@ class TorrentPanel(QWidget):
         widget = self.find_widget(torrent_id)
         if widget:
             widget.update_status(status)
+        self._enforce_seed_ratio_limit(torrent_id, status)
+
+    def _enforce_seed_ratio_limit(self, torrent_id, status):
+        record = self.records.get(torrent_id)
+        if not record or record.seed_ratio_limit <= 0:
+            return  # 0 == seed indefinitely, the default
+        if not status.get("is_seeding"):
+            return
+        if status.get("ratio", 0) < record.seed_ratio_limit:
+            return
+        handle = self.engine.handles.get(torrent_id)
+        if handle is not None and not handle.status().paused:
+            self.engine.pause(torrent_id)
+            self.status_update_requested.emit(
+                f"Reached seed ratio {record.seed_ratio_limit:.2f} -- stopped seeding: {record.name}", 6000
+            )
+            logger.info(f"[{torrent_id}] Seed ratio limit {record.seed_ratio_limit:.2f} reached "
+                        f"(actual: {status.get('ratio', 0):.2f}); auto-paused.")
 
     def on_metadata_received(self, torrent_id, name, total_size, files):
         record = self.records.get(torrent_id)
